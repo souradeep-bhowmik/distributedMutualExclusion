@@ -1,5 +1,6 @@
 # distributedMutualExclusion
 Date of Project: November 2018
+
 This project was undertaken as part of my term project for Advanced Operating Systems course for my Masters degree. I have done implementations of two DME algorithms and Vector clock.
 
 DME: Distributed Mutual Exclusion is a property of concurrency control in a distributed system. The goals of DME is to:
