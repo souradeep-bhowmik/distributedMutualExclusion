@@ -1,92 +1,87 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[1]:
-
-from os import getpid
 from multiprocessing import Pipe, Process
 
-# Lamport Vector Clock
-def lamport_time(vector_clock):
-    return '(lamport_vector_clock={})'.format(vector_clock)
+# Vector Clock
+def lamportTime(vectorClock):
+    return '(lamport_vector_clock={})'.format(vectorClock)
 
-# Received timestamp (Vector Clock)
-def received_timestamp(time_stamp, vector_clock):
-    for i in range(len(vector_clock)):
-        vector_clock[i] = max(vector_clock[i], time_stamp[i])
-    return vector_clock
+# Method for timestamp update of local vector clock for processes
+def receivedTimestamp(timeStamp, vectorClock):
+    for i in range(len(vectorClock)):
+        vectorClock[i] = max(vectorClock[i], timeStamp[i])
+    return vectorClock
 
 # Sending message
-def sending(pipe, id, vector_clock):
-    vector_clock[id-1] += 1
-    pipe.send(('Go Cyclone!!!', vector_clock))
-    print(str(id) + ' has sent message: '+ lamport_time(vector_clock))
-    return vector_clock
+def sendMessage(pipe, id, vectorClock):
+    vectorClock[id-1] += 1
+    pipe.send(('Go Cyclone!!!', vectorClock))
+    print(str(id) + ' has sent message: '+ lamportTime(vectorClock))
+    return vectorClock
 
 # Local event
-def local_event(id,vector_clock):
-    vector_clock[id-1] += 1
-    print('A local event occurs in {}: '.format(id) + lamport_time(vector_clock))
-    return vector_clock
+def localEvent(id,vectorClock):
+    vectorClock[id-1] += 1
+    print('A local event occurs in {}: '.format(id) + lamportTime(vectorClock))
+    return vectorClock
 
 # Receiving message
-def received(pipe, id, vector_clock):
-    vector_clock[id-1] += 1
-    message, timestamp = pipe.recv()
-    vector_clock = received_timestamp(timestamp, vector_clock)
-    print(str(id)  + ' has received message: ' + lamport_time(vector_clock))
-    return vector_clock
+def receiveMessage(pipe, id, vectorClock):
+    vectorClock[id-1] += 1
+    message, timeStamp = pipe.recv()
+    vectorClock = receivedTimestamp(timeStamp, vectorClock)
+    print(str(id)  + ' has received message: ' + lamportTime(vectorClock))
+    return vectorClock
 
-# Process 1
-def one(pipe_one_to_two,pipe_one_to_four):
+# 1st Process
+def one(pipeOneToTwo,pipeOneToFour):
     id = 1
-    vector_clock = [0,0,0,0]
-    vector_clock = local_event(id, vector_clock)
-    vector_clock = sending(pipe_one_to_two, id, vector_clock)
-    vector_clock = sending(pipe_one_to_four, id, vector_clock)
-    vector_clock = received(pipe_one_to_four, id, vector_clock)
-    vector_clock = received(pipe_one_to_two, id, vector_clock)
+    vectorClock = [0,0,0,0]
+    vectorClock = localEvent(id, vectorClock)
+    vectorClock = sendMessage(pipeOneToTwo, id, vectorClock)
+    vectorClock = sendMessage(pipeOneToFour, id, vectorClock)
+    vectorClock = receiveMessage(pipeOneToFour, id, vectorClock)
+    vectorClock = receiveMessage(pipeOneToTwo, id, vectorClock)
 
-# Process 2
-def two(pipe_three_to_two):
+# 2nd Process
+def two(pipeThreeToTwo):
     id = 2
-    vector_clock = [0,0,0,0]
-    vector_clock = received(pipe_three_to_two, id, vector_clock)
-    vector_clock = sending(pipe_three_to_two, id, vector_clock)
+    vectorClock = [0,0,0,0]
+    vectorClock = receiveMessage(pipeThreeToTwo, id, vectorClock)
+    vectorClock = sendMessage(pipeThreeToTwo, id, vectorClock)
 
-# Process 3
-def three(pipe_two_to_one):
+# 3rd Process
+def three(pipeTwoToOne):
     id = 3
-    vector_clock = [0,0,0,0]
-    vector_clock = received(pipe_two_to_one, id, vector_clock)
-    vector_clock = sending(pipe_two_to_one, id, vector_clock)
+    vectorClock = [0,0,0,0]
+    vectorClock = receiveMessage(pipeTwoToOne, id, vectorClock)
+    vectorClock = sendMessage(pipeTwoToOne, id, vectorClock)
 
-# Process 4
-def four(pipe_four_to_one,pipe_two_to_three):
+# 4th Process
+def four(pipeFourToOne,pipeTwoToThree):
     id = 4
-    vector_clock = [0,0,0,0]
-    vector_clock = received(pipe_four_to_one, id, vector_clock)
-    vector_clock = sending(pipe_two_to_three, id, vector_clock)
-    vector_clock = local_event(id,vector_clock)
-    vector_clock = sending(pipe_four_to_one, id, vector_clock)
-    vector_clock = received(pipe_two_to_three, id, vector_clock)
-    
-one_to_two, two_to_one = Pipe()
-two_to_three, three_to_two = Pipe()
-four_to_one, one_to_four = Pipe()
+    vectorClock = [0,0,0,0]
+    vectorClock = receiveMessage(pipeFourToOne, id, vectorClock)
+    vectorClock = sendMessage(pipeTwoToThree, id, vectorClock)
+    vectorClock = localEvent(id,vectorClock)
+    vectorClock = sendMessage(pipeFourToOne, id, vectorClock)
+    vectorClock = receiveMessage(pipeTwoToThree, id, vectorClock)
 
-p_one = Process(target=one, args=(one_to_two,one_to_four))
-p_two = Process(target=two, args=(three_to_two,))
-p_three = Process(target=three, args=(two_to_one,))
-p_four = Process(target=four, args=(four_to_one,two_to_three))
+# Main module for process creation and synchronization
+if __name__ == '__main__':
+    oneToTwo, twoToOne = Pipe()
+    twoToThree, threeToTwo = Pipe()
+    fourToOne, oneToFour = Pipe()
 
-p_one.start()
-p_two.start()
-p_three.start()
-p_four.start()
+    processOne = Process(target=one, args=(oneToTwo,oneToFour))
+    processTwo = Process(target=two, args=(threeToTwo,))
+    processThree = Process(target=three, args=(twoToOne,))
+    processFour = Process(target=four, args=(fourToOne,twoToThree))
 
-p_one.join()
-p_two.join()
-p_three.join()
-p_four.join()
+    processOne.start()
+    processTwo.start()
+    processThree.start()
+    processFour.start()
 
+    processOne.join()
+    processTwo.join()
+    processThree.join()
+    processFour.join()
