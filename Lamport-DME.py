@@ -1,99 +1,113 @@
+"""
+Author      :       Souradeep Bhowmik
+Date        :       November 2018
+Environment :       Windows 10
+Version     :       Python 3.6.2
+"""
 
-# coding: utf-8
 
-# In[ ]:
-
-
-import random
-from mpi4py import MPI
 import sys
-from datetime import datetime
+import random
 import threading
 from time import sleep
-from collections import deque
+from mpi4py import MPI
 from threading import Thread
+from datetime import datetime
+from collections import deque
 
+# Initialize MPI
 comm = MPI.COMM_WORLD
-thread_id = comm.Get_rank()
-number_of_process = comm.Get_size()
+threadId = comm.Get_rank()
+numberOfProcesses = comm.Get_size()
 
-queue_in_process = deque()
-in_cs = 0
-release_lock = threading.Lock()
-request_lock = threading.Lock()
-cs_lock = threading.Lock()
-vector_clock=0
+# Process queue, first in first out
+processQueue = deque()
+
+# Inside critical section: 1, otherwise: 1
+inCriticalSection = 0
+
+# Locks for mutual exclusion
+releaseLock = threading.Lock()
+requestLock = threading.Lock()
+criticalSectionLock = threading.Lock()
+
+# Vector clock
+vectorClock=0
 counter = 0
 
-def request():
-    global vector_clock
-    with request_lock:
-        vector_clock+=1
-        for i in range(number_of_process):
-            if thread_id!=i:
-                print("%s: %d sends request to %d!!!" % (datetime.now().strftime('%H:%M:%S'), thread_id, i))
+# Method for broadcasting a critical section request
+def requestCriticalSection():
+    global vectorClock
+    with requestLock:
+        vectorClock+=1
+        for i in range(numberOfProcesses):
+            if threadId!=i:
+                print("%s: %d sends request to %d!!!" % (datetime.now().strftime('%H:%M:%S'), threadId, i))
                 sys.stdout.flush()
-                value_sent = ['CS',vector_clock,thread_id]
+                value_sent = ['CS',vectorClock,threadId]
                 comm.send(value_sent, dest=i)
                 sleep(2)
-            
-def reply(id):
-    global vector_clock
-    print("%s: %d sends reply to %d!!!" % (datetime.now().strftime('%H:%M:%S'), thread_id, id[1]))
+
+# Method for replying to a received message
+def sendReply(id):
+    global vectorClock
+    print("%s: %d sends reply to %d!!!" % (datetime.now().strftime('%H:%M:%S'), threadId, id[1]))
     sys.stdout.flush()
-    value_sent = ['reply',vector_clock,thread_id]
+    value_sent = ['reply',vectorClock,threadId]
     comm.send(value_sent, dest=id[1])
     sleep(3)
-    queue_in_process.append(id)
+    processQueue.append(id)
 
-def release():
-    global vector_clock
-    counter=0
-    with release_lock:
-        for i in range(number_of_process):
-            if thread_id!=i:
-                print("%s: %d sends release to %d!!!" % (datetime.now().strftime('%H:%M:%S'), thread_id, i))
+# Method for processing critical section exit
+def exitCriticalSection():
+    global vectorClock
+    with releaseLock:
+        for i in range(numberOfProcesses):
+            if threadId!=i:
+                print("%s: %d sends release to %d!!!" % (datetime.now().strftime('%H:%M:%S'), threadId, i))
                 sys.stdout.flush()
-                value_sent = ['release',vector_clock,thread_id]
+                value_sent = ['release',vectorClock,threadId]
                 comm.send(value_sent, dest=i)
                 sleep(2)
 
-def receive():
-    global queue_in_process
+# Method to handle received requests
+def receiveMessage():
+    global processQueue
     global counter
     while True:
         message = comm.recv(source=MPI.ANY_SOURCE)
         if message[0] == 'release':
-            queue_in_process.popleft()
+            processQueue.popleft()
         elif message[0] == 'CS':
-            reply([message[1],message[2]])
-            queue_in_process.append([message[1],message[2]])
+            sendReply([message[1],message[2]])
+            processQueue.append([message[1],message[2]])
         elif message[0] == 'reply':
             counter+=1
-            if counter == number_of_process-1:
-                enter_cs()
+            if counter == numberOfProcesses-1:
+                enterCriticalSection()
 
-def enter_cs():
-    global in_cs
-    with cs_lock:
-        in_cs = 1
-        print("%s: %d enters CS." % (datetime.now().strftime('%H:%M:%S'), thread_id))
+# Method to process critical section entry
+def enterCriticalSection():
+    global inCriticalSection
+    with criticalSectionLock:
+        inCriticalSection = 1
+        print("%s: %d enters CS." % (datetime.now().strftime('%H:%M:%S'), threadId))
         sys.stdout.flush()
         sleep(random.uniform(3,7))
-        print("%s: %d finishes CS." % (datetime.now().strftime('%H:%M:%S'), thread_id))
+        print("%s: %d finishes CS." % (datetime.now().strftime('%H:%M:%S'), threadId))
         sys.stdout.flush()
-        in_cs = 0
-        release()
-    counter = 0
+        inCriticalSection = 0
+        exitCriticalSection()
 
+# Main program module that starts the communication in an infinite loop (the communication must be terminated manually!)
 try:
-    some_process = Thread(target=receive)
+    some_process = Thread(target=receiveMessage)
     some_process.start()
 except:
     print("can't start thread!!!!")
 
 while True:
-    request()
+    requestCriticalSection()
     sleep(random.uniform(1,2))
-    if in_cs==0:
-        receive()
+    if inCriticalSection==0:
+        receiveMessage()
