@@ -1,4 +1,10 @@
-# In[1]:
+"""
+Author      :       Souradeep Bhowmik
+Date        :       November 2018
+Environment :       Windows 10
+Version     :       Python 3.6.2
+"""
+
 
 import sys
 import random
@@ -9,18 +15,21 @@ from threading import Thread
 from datetime import datetime
 from collections import deque
 
-# Initialize
+# Initialize MPI
 comm = MPI.COMM_WORLD
 threadId = comm.Get_rank()
 numberofProcess = comm.Get_size()
 
-# queue in token, first in first out!
+# Token queue, first in first out!
 tokenQueue = deque()
-# Has no token : 0. Otherwise: 1
+
+# Doesn't have token: 0, otherwise: 1
 hasToken = 0
-# Not in critical section: 0. Otherwise: 1
+
+# Not in critical section: 0, otherwise: 1
 inCriticalSection = 0
-# Not request for token: 0. Otherwise: 1
+
+# Did not request for token: 0, otherwise: 1
 reqForToken = 0
 
 # Synchronization lock for each step
@@ -28,13 +37,14 @@ criticalSectionLock = threading.Lock()
 sendTokenLock = threading.Lock()
 rnLock = threading.Lock()
 releaseLock = threading.Lock()
-# Only one process can request for token at one time
+# Only one process can request for the token at one time
 requestLock = threading.Lock()
-# Only one process can have token at one time
+# Only one process can have the token at one time
 tokenLock = threading.Lock()
 
-# Create LN and RN
+# List for keeping information about most recent sequence execution by a site in the token
 LN = [0]*numberofProcess
+# List for keeping the largest sequence number of request from a site
 RN = [0]*numberofProcess
 
 # Assume Process 0 has token initially
@@ -43,10 +53,8 @@ if threadId == 0:
           (datetime.now().strftime('%H:%M:%S'), threadId))
     hasToken = 1
 
-# One process wants to request for token
-
-
-def request():
+# Method for ensuring mutual exclusion during token request
+def requestToken():
     global hasToken
     global RN
     global inCriticalSection
@@ -61,9 +69,7 @@ def request():
             reqForToken = 1
             startSend(currentValue)
 
-# One process sends request to others
-
-
+# Method for sending requests to other sites
 def startSend(value):
     for i in range(numberofProcess):
         if threadId != i:
@@ -74,9 +80,7 @@ def startSend(value):
             comm.send(valueSent, dest=i)
             sleep(2)
 
-# One process sends token to another
-
-
+# Method for sending token to another site
 def sendToken(receiver):
     global tokenQueue
     global inCriticalSection
@@ -87,9 +91,7 @@ def sendToken(receiver):
         token = ['Token', LN, tokenQueue]
         comm.send(token, dest=receiver)
 
-# One process receives something
-
-
+# Method that does processing related to receiving a message form a site
 def receive():
     global LN
     global reqForToken
@@ -99,20 +101,22 @@ def receive():
     global inCriticalSection
     while True:
         message = comm.recv(source=MPI.ANY_SOURCE)
-        # receive a request
+
+        # Receives a request
         if message[0] == 'CS':
             with rnLock:
                 RN[message[1]] = max([message[2], RN[message[1]]])
-                # if sequence number that i send is less than RN[i] (receiver), out of date
+                # Check for out of date requests
                 if message[2] < RN[message[1]]:
                     print("%s: Request from %d is out of date." %
                           (datetime.now().strftime('%H:%M:%S'), message[1]))
                     sys.stdout.flush()
-                # if j has token, no process is in cs, and RN[i] = LN[i]+1, send token
+                # If process j has token, no other process is in cs and RN[i] = LN[i]+1 then send token
                 if (hasToken == 1) and inCriticalSection == 0 and (RN[message[1]] == (LN[message[1]] + 1)):
                     hasToken = 0
                     sendToken(message[1])
-        # receive a token
+                    
+        # Receives a token
         elif message[0] == 'Token':
             with tokenLock:
                 print("%s: %d receives a token." %
@@ -124,9 +128,7 @@ def receive():
                 tokenQueue = message[2]
                 enterCriticalSection()
 
-# One process enters CS
-
-
+# Method that is used to enter critical section
 def enterCriticalSection():
     global inCriticalSection
     global hasToken
@@ -141,12 +143,10 @@ def enterCriticalSection():
                   (datetime.now().strftime('%H:%M:%S'), threadId))
             sys.stdout.flush()
             inCriticalSection = 0
-            release()
+            exitCriticalSection()
 
-# One process releases CS
-
-
-def release():
+# Method that is used to exit critical section
+def exitCriticalSection():
     global inCriticalSection
     global LN
     global RN
@@ -167,7 +167,7 @@ def release():
             sendToken(tokenQueue.popleft())
 
 
-# Starts program!
+# Main program module that starts the communication in an infinite loop (the communication must be terminated manually!)
 try:
     threadSource = Thread(target=receive)
     threadSource.start()
@@ -177,7 +177,7 @@ except:
 while True:
     if hasToken == 0:
         sleep(random.uniform(1, 3.5))
-        request()
+        requestToken()
     elif inCriticalSection == 0:
         enterCriticalSection()
     while reqForToken:
