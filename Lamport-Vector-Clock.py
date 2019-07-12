@@ -1,3 +1,11 @@
+"""
+Author      :       Souradeep Bhowmik
+Date        :       November 2018
+Environment :       Windows 10
+Version     :       Python 3.6.2
+"""
+
+
 from multiprocessing import Pipe, Process
 
 # Vector Clock
